@@ -3,8 +3,8 @@
 LOCAL_PATH := $(call my-dir)
 
 updater_src_files := \
-	install.c \
 	../mounts.c \
+	install.c \
 	updater.c \
 	../ubi/ubiutils-common.c \
 	../ubi/libubi.c
@@ -27,16 +27,22 @@ LOCAL_C_INCLUDES += system/extras/ext4_utils
 LOCAL_STATIC_LIBRARIES += libext4_utils libz
 endif
 
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_STATIC_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
+
 LOCAL_STATIC_LIBRARIES += libflashutils libmtdutils libmmcutils libbmlutils
 
 LOCAL_STATIC_LIBRARIES += $(TARGET_RECOVERY_UPDATER_LIBS) $(TARGET_RECOVERY_UPDATER_EXTRA_LIBS)
 LOCAL_STATIC_LIBRARIES += libapplypatch libedify libmtdutils libminzip libz
 LOCAL_STATIC_LIBRARIES += libmincrypt libbz
-LOCAL_STATIC_LIBRARIES += libminelf libcrecovery
+LOCAL_STATIC_LIBRARIES += libminelf
 LOCAL_STATIC_LIBRARIES += libcutils libstdc++ libc
 LOCAL_C_INCLUDES +=/ \
-	$(LOCAL_PATH)/../../../device/ainol/elf2/mtd-utils/include/ \
-	$(LOCAL_PATH)/../../../device/ainol/elf2/mtd-utils/ubi-utils/include \
+	$(LOCAL_PATH)/../../../device/amlogic/w22pro/mtd-utils/include/ \
+	$(LOCAL_PATH)/../../../device/amlogic/w22pro/mtd-utils/ubi-utils/include \
 	$(LOCAL_PATH)/..
 
 # Each library in TARGET_RECOVERY_UPDATER_LIBS should have a function

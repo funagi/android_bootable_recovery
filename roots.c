@@ -74,6 +74,8 @@ static int parse_options(char* options, Volume* volume) {
             volume->fs_options = strdup(option + 11);
         } else if (strncmp(option, "fs_options2=", 12) == 0) {
             volume->fs_options2 = strdup(option + 12);
+        } else if (strncmp(option, "lun=", 4) == 0) {
+            volume->lun = strdup(option + 4);
         } else {
             LOGE("bad option \"%s\"\n", option);
             return -1;
@@ -94,6 +96,7 @@ void load_volume_table() {
     device_volumes[0].fs_type2 = NULL;
     device_volumes[0].fs_options = NULL;
     device_volumes[0].fs_options2 = NULL;
+    device_volumes[0].lun = NULL;
     device_volumes[0].length = 0;
     num_volumes = 1;
 
@@ -143,6 +146,7 @@ void load_volume_table() {
             device_volumes[num_volumes].fs_type2 = NULL;
             device_volumes[num_volumes].fs_options = NULL;
             device_volumes[num_volumes].fs_options2 = NULL;
+            device_volumes[num_volumes].lun = NULL;
 
             if (parse_options(options, device_volumes + num_volumes) != 0) {
                 LOGE("skipping malformed recovery.fstab line: %s\n", original);
@@ -471,6 +475,9 @@ int ensure_path_unmounted(const char* path) {
     }
 }
 
+extern struct selabel_handle *sehandle;
+static int handle_data_media = 0;
+
 int format_volume(const char* volume) {
     Volume* v = volume_for_path(volume);
     if (v == NULL) {
@@ -485,7 +492,7 @@ int format_volume(const char* volume) {
     }
     // check to see if /data is being formatted, and if it is /data/media
     // Note: the /sdcard check is redundant probably, just being safe.
-    if (strstr(volume, "/data") == volume && is_data_media()) {
+    if (strstr(volume, "/data") == volume && is_data_media() && !handle_data_media) {
         return format_unknown_device(NULL, volume, NULL);
     }
     if (strcmp(v->fs_type, "ramdisk") == 0) {
@@ -534,7 +541,7 @@ int format_volume(const char* volume) {
     }
 
     if (strcmp(v->fs_type, "ext4") == 0) {
-        int result = make_ext4fs(v->device, v->length);
+        int result = make_ext4fs(v->device, v->length, volume, sehandle);
         if (result != 0) {
             LOGE("format_volume: make_extf4fs failed on %s\n", v->device);
             return -1;
@@ -549,82 +556,6 @@ int format_volume(const char* volume) {
     return format_unknown_device(v->device, volume, v->fs_type);
 }
 
-static int format_ubifs_volume(const char* location) {
-    int err;
-    struct ubi_info ubi_info;
-    struct ubi_dev_info dev_info;
-    struct ubi_attach_request req;
-    struct ubi_mkvol_request req2;
-    char ubinode[16] ={0};
-
-    mtd_scan_partitions();
-    int mtdn = mtd_get_index_by_name(location);
-    if (mtdn < 0) {
-        LOGE("bad mtd index for %s\n", location);
-        return -1;
-    }
-
-    libubi_t libubi;
-    libubi = libubi_open();
-    if (!libubi) {
-        LOGE("libubi_open fail\n");
-        return -1;
-    }
-
-    /*
-     * Make sure the kernel is fresh enough and this feature is supported.
-     */
-    err = ubi_get_info(libubi, &ubi_info);
-    if (err) {
-        LOGE("cannot get UBI information\n");
-        goto out_ubi_close;
-    }
-
-    if (ubi_info.ctrl_major == -1) {
-        LOGE("MTD attach/detach feature is not supported by your kernel\n");
-        goto out_ubi_close;
-    }
-
-    req.dev_num = UBI_DEV_NUM_AUTO;
-    req.mtd_num = mtdn;
-    req.vid_hdr_offset = 0;
-    req.mtd_dev_node = NULL;
-
-    err = ubi_attach(libubi, DEFAULT_CTRL_DEV, &req);
-    if (err) {
-        LOGE("cannot attach mtd%d", mtdn);
-        goto out_ubi_close;
-    }
-
-    /* Print some information about the new UBI device */
-    err = ubi_get_dev_info1(libubi, req.dev_num, &dev_info);
-    if (err) {
-        LOGE("cannot get information about newly created UBI device\n");
-        goto out_ubi_detach;
-    }
-
-    req2.vol_id = UBI_VOL_NUM_AUTO;
-    req2.alignment = 1;
-    req2.bytes = dev_info.avail_lebs*dev_info.leb_size;
-    req2.name = location;
-    req2.vol_type = UBI_DYNAMIC_VOLUME;
-
-    sprintf(ubinode, "/dev/ubi%d", dev_info.dev_num);
-
-    err = ubi_mkvol(libubi, ubinode, &req2);
-    if (err < 0) {
-        LOGE("cannot UBI create volume %s at %s %d %llu\n", req2.name, ubinode ,err, req2.bytes);
-        goto out_ubi_detach;
-    }
-
-    ubi_detach_mtd(libubi, DEFAULT_CTRL_DEV, mtdn);
-    libubi_close(libubi);
-    return 0;
-
-out_ubi_detach:
-    ubi_detach_mtd(libubi, DEFAULT_CTRL_DEV, mtdn);
-
-out_ubi_close:
-    libubi_close(libubi);
-    return -1;
+void handle_data_media_format(int handle) {
+  handle_data_media = handle;
 }

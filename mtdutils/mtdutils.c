@@ -423,6 +423,11 @@ static int write_block(MtdWriteContext *ctx, const char *data)
     if (pos == (off_t) -1) return 1;
 
     ssize_t size = partition->erase_size;
+
+    char *verify = malloc(size);
+    if (verify == NULL)
+        return 1;
+
     while (pos + size <= (int) partition->size) {
         loff_t bpos = pos;
         int ret = ioctl(fd, MEMGETBADBLOCK, &bpos);
@@ -451,7 +456,6 @@ static int write_block(MtdWriteContext *ctx, const char *data)
                         pos, strerror(errno));
             }
 
-            char verify[size];
             if (lseek(fd, pos, SEEK_SET) != pos ||
                 read(fd, verify, size) != size) {
                 fprintf(stderr, "mtd: re-read error at 0x%08lx (%s)\n",
@@ -468,6 +472,7 @@ static int write_block(MtdWriteContext *ctx, const char *data)
                 fprintf(stderr, "mtd: wrote block after %d retries\n", retry);
             }
             fprintf(stderr, "mtd: successfully wrote block at %llx\n", pos);
+            free(verify);
             return 0;  // Success!
         }
 
@@ -477,6 +482,8 @@ static int write_block(MtdWriteContext *ctx, const char *data)
         ioctl(fd, MEMERASE, &erase_info);
         pos += partition->erase_size;
     }
+
+    free(verify);
 
     // Ran out of space on the device
     errno = ENOSPC;
