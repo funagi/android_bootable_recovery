@@ -556,6 +556,86 @@ int format_volume(const char* volume) {
     return format_unknown_device(v->device, volume, v->fs_type);
 }
 
+static int format_ubifs_volume(const char* location) {
+    int err;
+    struct ubi_info ubi_info;
+    struct ubi_dev_info dev_info;
+    struct ubi_attach_request req;
+    struct ubi_mkvol_request req2;
+    char ubinode[16] ={0};
+
+    mtd_scan_partitions();
+    int mtdn = mtd_get_index_by_name(location);
+    if (mtdn < 0) {
+        LOGE("bad mtd index for %s\n", location);
+        return -1;
+    }
+
+    libubi_t libubi;
+    libubi = libubi_open();
+    if (!libubi) {
+        LOGE("libubi_open fail\n");
+        return -1;
+    }
+
+    /*
+     * Make sure the kernel is fresh enough and this feature is supported.
+     */
+    err = ubi_get_info(libubi, &ubi_info);
+    if (err) {
+        LOGE("cannot get UBI information\n");
+        goto out_ubi_close;
+    }
+
+    if (ubi_info.ctrl_major == -1) {
+        LOGE("MTD attach/detach feature is not supported by your kernel\n");
+        goto out_ubi_close;
+    }
+
+    req.dev_num = UBI_DEV_NUM_AUTO;
+    req.mtd_num = mtdn;
+    req.vid_hdr_offset = 0;
+    req.mtd_dev_node = NULL;
+
+    err = ubi_attach(libubi, DEFAULT_CTRL_DEV, &req);
+    if (err) {
+        LOGE("cannot attach mtd%d", mtdn);
+        goto out_ubi_close;
+    }
+
+    /* Print some information about the new UBI device */
+    err = ubi_get_dev_info1(libubi, req.dev_num, &dev_info);
+    if (err) {
+        LOGE("cannot get information about newly created UBI device\n");
+        goto out_ubi_detach;
+    }
+
+    req2.vol_id = UBI_VOL_NUM_AUTO;
+    req2.alignment = 1;
+    req2.bytes = dev_info.avail_lebs*dev_info.leb_size;
+    req2.name = location;
+    req2.vol_type = UBI_DYNAMIC_VOLUME;
+
+    sprintf(ubinode, "/dev/ubi%d", dev_info.dev_num);
+
+    err = ubi_mkvol(libubi, ubinode, &req2);
+    if (err < 0) {
+        LOGE("cannot UBI create volume %s at %s %d %llu\n", req2.name, ubinode ,err, req2.bytes);
+        goto out_ubi_detach;
+    }
+
+    ubi_detach_mtd(libubi, DEFAULT_CTRL_DEV, mtdn);
+    libubi_close(libubi);
+    return 0;
+
+out_ubi_detach:
+    ubi_detach_mtd(libubi, DEFAULT_CTRL_DEV, mtdn);
+
+out_ubi_close:
+    libubi_close(libubi);
+    return -1;
+}
+
 void handle_data_media_format(int handle) {
   handle_data_media = handle;
 }
