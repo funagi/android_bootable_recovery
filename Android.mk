@@ -24,8 +24,8 @@ LOCAL_SRC_FILES := \
     ubi/libubi.c
 
 LOCAL_C_INCLUDES += \
-    device/ainol/elf2/mtd-utils/include/ \
-    device/ainol/elf2/mtd-utils/ubi-utils/include
+    device/amlogic/w22pro/mtd-utils/include/ \
+    device/amlogic/w22pro/mtd-utils/ubi-utils/include
 
 ADDITIONAL_RECOVERY_FILES := $(shell echo $$ADDITIONAL_RECOVERY_FILES)
 LOCAL_SRC_FILES += $(ADDITIONAL_RECOVERY_FILES)
