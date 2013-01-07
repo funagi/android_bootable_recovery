@@ -206,8 +206,10 @@ static void refresh_default_backup_handler() {
     else {
         ensure_path_mounted("/sdcard");
         FILE* f = fopen(NANDROID_BACKUP_FORMAT_FILE, "r");
-        if (NULL == f)
+        if (NULL == f) {
+            default_backup_handler = tar_compress_wrapper;
             return;
+        }
         fread(fmt, 1, sizeof(fmt), f);
         fclose(f);
     }
@@ -383,13 +385,11 @@ int nandroid_backup(const char* backup_path)
             return ret;
     }
 
-    if (0 != stat("/emmc/.android_secure", &s))
-    {
-        ui_print("No /emmc/.android_secure found. Skipping backup of applications on external storage.\n");
+    if (is_data_media() || 0 != stat("/sdcard/.android_secure", &s)) {
+        ui_print("No /sdcard/.android_secure found. Skipping backup of applications on external storage.\n");
     }
-    else
-    {
-        if (0 != (ret = nandroid_backup_partition_extended(backup_path, "/emmc/.android_secure", 0)))
+    else {
+        if (0 != (ret = nandroid_backup_partition_extended(backup_path, "/sdcard/.android_secure", 0)))
             return ret;
     }
 
@@ -717,7 +717,7 @@ int nandroid_restore(const char* backup_path, int restore_boot, int restore_syst
             return ret;
     }
 
-    if (restore_data && 0 != (ret = nandroid_restore_partition_extended(backup_path, "/emmc/.android_secure", 0)))
+    if (restore_data && 0 != (ret = nandroid_restore_partition_extended(backup_path, "/sdcard/.android_secure", 0)))
         return ret;
 
     if (restore_cache && 0 != (ret = nandroid_restore_partition_extended(backup_path, "/cache", 0)))
